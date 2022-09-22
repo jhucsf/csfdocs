@@ -14,4 +14,4 @@ following Github repository: <https://github.com/jhucsf/csfdocs>.
 
 ## Published documents
 
-There is nothing here yet!
+* [x86 64 Assembly Tips & Tricks, v0.1.0](assembly-tips-v0.1.0.pdf)
