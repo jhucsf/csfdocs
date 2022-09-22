@@ -42,7 +42,7 @@
 \title{x86\_64 Assembly Tips \& Tricks \\
 \large EN 601.229: CSF @ JHU\\
 Version 0.0.3 (preprint)}
-\author{The CSF Course Staff}
+\author{The CSF Course Staff (Max Hahn)}
 \maketitle
 
 \tableofcontents
@@ -202,7 +202,7 @@ executable like the instructions are. You should beware for the following direct
     \item \texttt{.space [size in bytes], [fill val]} - use with a label in the .data
         section to specify a statically allocated mutable global area of memory (e.g. for
         global arrays).
-    \item \texttt{.globL [label]} - marks the label \texttt{[label]} as a global symbol,
+    \item \texttt{.globl [label]} - marks the label \texttt{[label]} as a global symbol,
         which allows it to be exported from .o file. These should correspond to any
         functions you have declared in your .c file without the \texttt{static} keyword in
         the function signature. If you get a "undefined symbol ..." error when you try
@@ -249,7 +249,7 @@ mutableGlobalArray: .space 100, 0 /* array of 100 bytes, e.g. char[100] */
 
 .section .text
 /* everything below here will be placed in the .text section */
-.globL myFun
+.globl myFun
 myFun:
     /* body of myFun */
     ret
@@ -290,7 +290,7 @@ illustrated below:
     writeString: .string "number: %ld\n"
 
 .section .text
-.globL fun
+.globl fun
 fun:
     pushq %rbp
     movq %rsp, %rbp
@@ -997,7 +997,7 @@ and a possible assembly implementation of the above:
  * rdi - int* arr
  * rsi - size_t len
  */
-.globL summate
+.globl summate
 summate:
     pushq %rbx      /* save the accumulate before use (need to persist across call) */
     movq %rsi, %rcx /* initialize loop counter */
