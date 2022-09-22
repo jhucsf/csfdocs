@@ -396,6 +396,12 @@ Some notes on various instructions in no particular order:
         \texttt{cqto} for sign-extending a 1, 2, 4, 8 byte register for signed division.
         These always operate on various subregisters of the rax register and the widest
         three will sign extend to subdivisions of rdx as needed.
+
+    \item When using functions that take variable numbers of arguments (e.g. the
+        \texttt{printf} family and the \texttt{scanf} family), \texttt{\%rax} must be
+        zeroed before each call if no floating point (vector) arguments are passed.
+        Failure to do this can lead to segfaults and other undefined behavior in rare
+        cases.
 \end{enumerate}
 
 
