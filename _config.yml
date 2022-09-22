@@ -1,0 +1,3 @@
+baseurl: "/csfdocs"
+markdown: kramdown
+highlighter: rouge
