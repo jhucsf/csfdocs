@@ -8,6 +8,7 @@
 \usepackage{lmodern}
 \usepackage{slantsc}
 \usepackage[letterpaper, margin=1.25in]{geometry}
+% table enhancements
 \usepackage{array}
 \usepackage{multirow}
 % bookmarks
@@ -21,19 +22,19 @@
 \usepackage{amsfonts}
 \usepackage{amsthm}
 % algorithms
-%\usepackage[]{algorithm2e}
-\usepackage{afterpage}
-\usepackage{placeins}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{afterpage}
+\usepackage{placeins}
 \usepackage{listings}
 % options
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{0.5em}
+\setlength{\parskip}{0.6em}
 \lstset{
     basicstyle=\small\ttfamily,
     columns=flexible,
-    breaklines=true
+    breaklines=true,
+    keepspaces=true
 }
 
 
@@ -102,8 +103,18 @@ Here is a brief glossary of the unfamiliar terms used in this document:
         stack.
     \item \emph{Stack frame} - A collection of all the information (non-register local
         variables) needed for a function call's execution. Created by the combination of the
-        \texttt{call} instruction and any \emph{function preamble} (the part of the
-        function before the main body where rsp is adjusted and rbp is saved).
+        \texttt{call} instruction and any \emph{function preamble} operations (the part of the
+        function before the main body where \texttt{rsp} is adjusted, \texttt{rbp} is
+        saved, and registers are prepared for use).
+    \item \emph{Alignment} - Ensuring that data structure starts on a address that is a
+        well defined multiple of a power of two. Often required because certain memory
+        access patterns require this at the hardware level.
+    \item \emph{Stack} - Region of program memory that grows downwards from the ``top'' of a
+        memory segment. Used to keep track of function calls, function local variables,
+        and small bits of extra data.
+    \item \emph{Heap} - Region of program memory that grow upwards from  the ``bottom'' of
+        a memory segment. Used for dynamic memory allocation (out-of-scope for this
+        document).
 \end{enumerate}
 
 \section{Mechanics}
@@ -111,7 +122,7 @@ Here is a brief glossary of the unfamiliar terms used in this document:
 We'll briefly cover some important topics that don't have very good coverage in the usual
 resources here.
 
-\subsection{Reference Resources}
+\subsection{Reference resources}
 
 Here are some basic assembly references that students have found to be helpful in the
 past:
@@ -139,19 +150,20 @@ past:
 Most x86 instructions can access at least one memory location (i.e. perform the equivalent
 of the C memory operation \texttt{*var}). This is done by replacing one of the normal
 instruction arguments with the memory reference syntax \texttt{offset(base\_address,
-index, index\_size)}, where offset is an integer literal, base\_address is a 8-byte
-register, offset is an 8-byte register, and offset\_size is one of 1, 2, 4, or 8. The
-syntax will compute $offset + base\_address + index * index\_size$, and dereferences that
-address to get the value in memory. The offset is meant to be used to add a constant index
-to a memory address and may be negative (e.g. if you want to index stack space you created
-by moving rsp). The index is meant to help with basic array indexing operations, which is
-why the index\_size is configurable. Any unused components may be left out, and
-\texttt{offset} will default to 0, \texttt{index} will default o 0 and \texttt{index\_size}
-will default to 1.
+index, index\_size)}. \texttt{offset} is an integer literal, \texttt{base\_address} is a
+8-byte register, \texttt{index} is an 8-byte register, and \texttt{offset\_size} is one of
+1, 2, 4, or 8. This will compute $offset + base\_address + index * index\_size$, and
+dereferences the computed address to get the value in memory.
+
+The offset is meant to be used to add a constant index to a memory address and may be
+negative (e.g. if you want to index stack space you created by moving rsp). The index is
+meant to help with basic array indexing operations, which is why the index\_size is
+configurable. Any unused components may be left out, and \texttt{offset} will default to
+0, \texttt{index} will default to 0 and \texttt{index\_size} will default to 1.
 
 Here are some example of this syntax, used with the \texttt{mov} instruction:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Accessing memory references}, captionpos=b]
     movq $(%rax), %rcx /* C equivalent: uint64_t rcx = *rax */
     movb $(%rax), %cl /* C equivalent: uint8_t cl = *rax */
     movq -128(%rax), %rcx /* C equivalent: uint64_t rcx = *((uint64_t*)(((uint8_t*)rax) - 128)) */
@@ -161,11 +173,11 @@ Here are some example of this syntax, used with the \texttt{mov} instruction:
     /* note that register, memory ordering also works */
 \end{lstlisting}
 
-Notice that since this is assembly, you do have to consider the size of the items in the
-array when computing offsets and indices, unlike C, where the compiler automatically
-adjusts this for you when you work with pointer arithmetic or array indexing.
+Notice that the size of the items in the array must be consider when computing offsets
+and indices, unlike C, where the compiler automatically adjusts this to the declared type
+in pointer arithmetic or array indexing.
 
-Generally speaking, most assembly instructions will only take one memory reference. E.g.
+Generally speaking, most assembly instructions will only take one memory reference:
 
 \begin{lstlisting}
     /* incorrect, will not assemble */
@@ -175,15 +187,22 @@ Generally speaking, most assembly instructions will only take one memory referen
     movq %rdx, (%rcx)
 \end{lstlisting}
 
-sometimes you will want to take the address of a memory reference instead of dereferencing
-the pointer. E.g. this would occur any time that a c function wants a pointer, but you
-have a normal variable. To do this, you can use \texttt{leaq [memory reference
-expression], [dest register]}, e.g. \texttt{leaq (\%rax, \%rcx, 8), \%rdx} effectively
-does \texttt{uint64\_t* rdx = \&rax[rcx]}. The \texttt{leaq} instruction actually just
-computes the $offset + base\_address + index * index\_size$ and stores it in the
-destination register using addressing hardware, so in essence it is just a special case
-of a series of math instruction that completes much faster (and thus \texttt{leaq (\%rax),
-\%rcx} is exactly equivalent to \texttt{movq \%rax, \%rcx}).
+Sometimes the address of a memory reference is desired instead of a dereference value from
+a pointer (i.e. the equivalent of the \texttt{\&} operator in C). To do this, you can use
+\texttt{leaq [memory reference expression], [dest register]}:
+
+\begin{lstlisting}[caption={\texttt{leaq} instruction example}]
+    /* roughly equivalent to uint64_t* rdx = &rax[rcx] */
+    leaq (%rax, %rcx, 8), %rdx
+    /* Can also use with an offset, for things like stack frame locations */
+    leaq -128(%rax, %rcx, 8), %rdx
+\end{lstlisting}
+
+The \texttt{leaq} instruction computes the value of $offset + base\_address + index *
+index\_size$ and stores it in the destination register using addressing hardware. In
+essence, it is just a special case of a series of three math instructions that completes
+much faster (and thus \texttt{leaq (\%rax), \%rcx} is exactly equivalent to \texttt{movq
+\%rax, \%rcx}).
 
 \subsection{Assembler directives}
 
@@ -237,7 +256,7 @@ The primary sections of interest for this class are
 
 Here is an example layout for a \texttt{.S} file:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={.S file section layout}, captionpos=b]
 .section .rodata
 /* everything below here will be placed in the .rodata section */
 helloStr: .string "Hello!"
@@ -273,16 +292,17 @@ be attached to. Labels that begin with \texttt{.L} will be treated as local labe
 assembler and will not appear as a function in GDB. However, all label names in a file
 must be unique; there is no such thing as a true scope-local label.
 
-Using the immediate prefix with a label asks for the absolute address of the label (i.e.
+Using the immediate prefix with a label resolves to the absolute address of the label (i.e.
 gets the pointer defined by the label). Using the label name without the immediate prefix
-dereferences the label address to get the value in memory at the label. Labels may not be
-indexed using the memory reference syntax above. If a label is attached to an array, the
-label's address must first be loaded into a register before it can be indexed. A register
-may not be converted into an address; if a function requires a pointer(e.g. \texttt{scanf}
-and friends), then either stack memory or labeled space in the \texttt{.data} section must
-be used. This is illustrated below:
+dereferences the label address to get the value in memory at the label.
 
-\begin{lstlisting}
+Labels may not be indexed using the memory reference syntax above. If a label is attached
+to an array, the label's address must first be loaded into a register before it can be
+indexed. A register may not be converted into an address; if a function requires a
+pointer(e.g. \texttt{scanf} and friends), then either stack memory or labeled space in the
+\texttt{.data} section must be used. This is illustrated below:
+
+\begin{lstlisting}[caption={Labels and immediates}, captionpos=b]
 .section .rodata:
     /* read-only array of ten 64 bit integers */
     globalArray: .quad 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
@@ -301,15 +321,18 @@ fun:
     subq $16, %rsp
     pushq %r12
     pushq %r13
+
     /* read a number from stdin into input_long */
-    xorl %eax, %eax /* efficient way to zero an entire register (see section 5.3.1) */
+    xorl %eax, %eax /* efficient way to zero a register (see section 5.3.1) */
     movq $readString, %rdi
     leaq -16(%rbp), %rsi
     callq scanf
-    /* now loop over our array,a nd add the read in number to each cell */
+
+    /* now loop over our array, and add the read in number to each cell */
     /* we need to use callee-save registers here since the printf call
        will kill caller-save registers */
-    movq $globalArray, %r12 /* load the array's base address into a callee-save register */
+    movq $globalArray, %r12 /* load the array's base address into a callee-save
+                               register */
     xorq %r13, %r13 /* zero loop counter (also must be callee-save since
                        printf is called in loop*/
     jmp .LloopCond /* jump should not have the immediate prefix on the label */
@@ -356,6 +379,15 @@ versions).
 Reference \href{https://www.felixcloutier.com/x86/jcc}{this link} for a full list of
 conditional jump instructions.
 
+\subsection{Argument passing}
+
+In a vast improvement to the 32-bit calling conventions, the Unix x86\_64 calling
+conventions allow the first six arguments to a function to be passed using registers. Thus
+you probably want to keep the number of function arguments in your functions to no more
+than six arguments. Reference table \ref{table:register_use} for details on which
+registers are used to pass which argument. Floating point arguments are passed using a
+different mechanism, and are out of scope for this document.
+
 \subsection{Odd instructions}
 
 Some notes on various instructions in no particular order:
@@ -395,7 +427,7 @@ Some notes on various instructions in no particular order:
         pair. This is done with \texttt{cbtw}, \texttt{cwtl}, \texttt{cltq}, and
         \texttt{cqto} for sign-extending a 1, 2, 4, 8 byte register for signed division.
         These always operate on various subregisters of the rax register and the widest
-        three will sign extend to subdivisions of rdx as needed.
+        three will sign extend to subregisters of rdx as needed.
 
     \item When using functions that take variable numbers of arguments (e.g. the
         \texttt{printf} family and the \texttt{scanf} family), \texttt{\%rax} must be
@@ -416,6 +448,16 @@ In this class, we will be adhering to the standard x86\_64 Linux calling convent
 not violate any of the "rules" in this guideline, even for tiny helper functions that you
 can rigorously analyze.
 
+\emph{Motivations}: Calling conventions exist to allow functions to be constructed and
+analyzed independently of each other, while providing a uniform way for the application to
+interact witht he underlying Os services. Since assembly programming places full control
+of the global state that is normally managed by the compiler back into the programmer's
+hands, ignoring the calling conventions (ABI specifications) in any function will break
+compatibility with the rest of the OS (which is responsible for running your code) and
+require you to manually analyze all of your global state (e.g. register usage) in every
+possible combination of your call tree.
+
+
 \subsubsection{Alignment} Alignment is to 16-bytes, and must be correct at \emph{call
 sites}, not the beginning of the function. Alignment ensures that each function starts
 with a known good stack offset, and thus must be verified before each call. Since the
@@ -423,7 +465,7 @@ stack starts every call offset by 8 (due to the return address of the function b
 pushed to the stack), this means that ensuring that the \texttt{rsp} offset at a call site
 is an odd multiple of 8, or $rsp_offset \% 16 = 8$.
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Proper alignment at call sites}, captionpos=b]
 some_function:
     pushq %rbp /* save the base pointer (callee-save reg) */
     movq %rsp, %rbp /* build the stack frame in a ABI compatible way */
@@ -437,8 +479,8 @@ some_function:
     pushq %rax /* save rax for some reason */
     /* bunch of assembly code w/o stack adjustments */
 
-    /* at this point the stack offset is 136, which is ALIGNED, so we can safely make the
-    call without messing with alignment */
+    /* at this point the stack offset is 136, which is ALIGNED, so we can safely
+       make the call without messing with alignment */
     call foo
     /* do other stuff including popping rax and restoring rbp */
     /* ... */
@@ -448,12 +490,12 @@ Aligning at the start of the function is acceptable if no intermediate stack ope
 are done between the alignment and call (i.e. if you don't want to think about alignment
 at every call site):
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Proper alignment in function prelude}, captionpos=b]
 some_function:
     subq $8, %rsp /* now aligned */
     /* bunch of assembly */
-    /* you must not adjust the stack pointer in any way here, i.e. you must not use push,
-    pop, [opcode] ..., %rsp */
+    /* you must not adjust the stack pointer in any way here, i.e. you must
+       not use push; pop; [opcode] ..., %rsp */
     call otherfun
 \end{lstlisting}
 
@@ -461,9 +503,10 @@ But if you end up using a lot of registers at once, it is not always possible to
 stack operations at the start of the function e.g. you may need to "spill" (push) some
 registers to the stack so you can temporarily use them for something else.
 
-However, this is always invalid:
+However, messing with the stack after it has been aligned without recalculating alignment
+is always invalid:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Incorrect alignment}, captionpos=b]
 some_function:
     pushq %rbp /* save the base pointer */
     movq %rsp, %rbp /* build the stack frame in a ABI compatible way */
@@ -477,8 +520,8 @@ some_function:
     pushq %rax /* save rax for some reason */
     /* bunch of assembly code w/o stack adjustments */
 
-    /* at this point the stack offset is 128, which is not aligned, so we've violated
-    calling convention here. */
+    /* at this point the stack offset is 128, which is not aligned, so we've
+       violated calling convention here. */
     call foo
 \end{lstlisting}
 
@@ -486,11 +529,20 @@ Alignment is not something that is blindly solved by adding \texttt{subq \$8, \%
 the beginning of your functions; you must think about the actual stack offset at every
 call site!
 
+Since the ABI specifications assume that the stack is aligned on entry to a function at the
+start of every function, it is extremely important that every non-leaf function rigorously
+follows the alignment requirements. However, while it is possible to ignore alignment
+requirements in leaf functions that never make calls, we highly recommend that you take
+steps to align the stack in those functions too, as you may choose to extend them to make
+calls at a later time, which would then break the alignment requirements for all
+descendants of that function.
+
 \subsubsection{Callee vs. Caller saved registers}
 
-Refer to this table for a summary of which registers are caller-saved and which registers
-are callee-saved.
+Refer to table \ref{table:register_use} for a summary of which registers are caller-saved
+and which registers are callee-saved.
 
+\begin{table}[h]
 \begin{tabular}{ l | p{9cm} | c }
     \multicolumn{1}{c}{Register} & \multicolumn{1}{c}{Usage} &
     \multicolumn{1}{p{3cm}}{Preserved across function calls} \\\hline
@@ -509,52 +561,54 @@ are callee-saved.
     \texttt{\%r11} & temporary register & No \\
     \texttt{\%r12-\%r15} & callee-save registers & Yes
 \end{tabular}
+\caption{Register uses}
+\label{table:register_use}
+\end{table}
 
-(note that usage column is the conventional usage; all 16 registers above in x86 (with a few
-exceptions) are general purpose registers and ca be used to store any value at any time
-(barring \texttt{\%rsp}))
-
-In the table above, ``yes'' in the ``Preserved across function calls'' column implies a
-callee-save register and ``no'' implies a caller-save register.
+\emph{Note}: The usage column is the conventional usage; all 16 registers above in x86
+(with a few exceptions) are general purpose registers and ca be used to store any value at
+any time (barring \texttt{\%rsp}). The value ``yes'' in the ``Preserved across function
+calls'' column implies a callee-save register and ``no'' implies a caller-save register.
 
 Recall that registers are shared global state; unlike higher-level languages there is no
 concept of a "local variable", and every part of an assembly program shares the same
 registers as every other part. To tame the mess, the Linux ABI has specified that concept
 of callee-saved registers, where the called function saves the registers before
 modifying them, and caller-saved registers, where the calling function saves the registers
-before making a call if the values are still needed. Note the following points:
+before making a call if the values are still needed. This implies that:
 
 \begin{enumerate}
     \item The "callee" and "caller" are from the perspective of the currently executing
         function. The caller is the function making the call (i.e. the current function),
         and the callee is the function it is calling.
-    \item This is only a convention, in order to have these semantics stick \emph{every
+    \item This is only a convention, in order to enforce these semantics \emph{every
         single function} must adhere to these conventions.
     \item If a function makes no calls, there is no reason to go through the extra
         complication of using callee-saved registers unless you ran out of caller-save
         registers.
 \end{enumerate}
 
-Thus, from the perspective of the current function, caller-saved registers may be used
+From the perspective of the current function, caller-saved registers may be used
 without bothering to save their contents, while callee-saved registers \emph{must be
 saved} before use, and restored before the function returns. Likewise, after a call, the
 function that made the call \emph{must} assume that \textbf{all} caller-saved registers
 have had their contents annihilated.
 
-Note: If you do not use a register, you don't have to do anything to it. Don't save it, or
+\emph{Note}: If you do not use a register, you don't have to do anything to it. Don't save it, or
 copy it, or do anything to it "just to be safe". However, as soon as you start using a
 register (i.e. write to its value), you must now start considering the register
 conventions for the register.
 
-Note the implications of violating register conventions: your assembly is being driven by
-other code (even if you wrote main in assembly, glibc is still calling your code). Thus,
-violating any of these conventions can lead to \emph{very undefined behaviour} as soon as
-control passes to a function out of your control, and you program may mysteriously
-segfault, crash or silently error (e.g. crash on return from main, even though everything
-else seems fine). \textbf{Do not violate register conventions!}
+Beware the implications of violating register conventions: the assembly program is being
+driven by other code (even if main were in assembly, glibc and the kernel will still
+interact with the code). Thus, violating any of these conventions can lead to \emph{very
+undefined behaviour} as soon as control passes to a function out of your control, and
+you program may mysteriously segfault, crash or silently error (e.g. crash on return
+from main, even though everything else seems fine). \textbf{Do not violate register
+conventions!}
 
-\textbf{Important} It does not matter if you wrote the function and know it won't touch
-certain registers, for your own sanity, and the sanity of anyone who will ever read your
+\textbf{Important}: It does not matter if you wrote the function and know it won't touch
+certain registers; for your own sanity, and the sanity of anyone who will ever read your
 code, you \emph{must pretend} like all caller-saved registers were overwritten with
 garbage after the control flow is passed back to the calling function. 99/100 times we
 have seen students attempt cute shortcuts like this, it has come back to bite them in
@@ -568,27 +622,27 @@ dealing with the alignment issues that come with that, or allocating true local 
 
 Notice that \texttt{rsp} is a \emph{callee-saved} register. \texttt{rsp} (and all its
 subregisters) is special because it's the stack pointer, and is implicitly used by
-\texttt{push}, \texttt{pop}, \texttt{ret}, \texttt{call}, among other instruction. In
+\texttt{push}, \texttt{pop}, \texttt{ret}, \texttt{call}, among other instructions. In
 particular, \texttt{call} will always push an 8-byte return pointer to the stack before
 passing control to the function that was called, and \texttt{ret} will figure out where to
-return execution to by popping the topmost 8-byte value off the top of the stack and
-jumping to that address.
+return execution to by popping the topmost 8-byte value off the stack and jumping to that
+address.
 
-Notice the terrifying implication: if you fail to restore the stack correctly before
-hitting the \texttt{ret} keyword, you will jump to some random garbage address instead of
-returning control to the calling function. This is a very very hard to debug, as even GDB
-will be confused once this happens (you can generally tell this has happened in your
-program immediately segfaults, prints "Bus error", or seems to jump into the middle of
-nowhere aster you pass the ret opcode).
+Notice the terrifying implication: if you fail to restore the stack pointer correctly
+before hitting the \texttt{ret} keyword, you will jump to some random garbage address
+instead of returning control to the calling function. This is a \emph{very very hard} to
+debug, as even GDB will be confused once this happens (you can generally tell this has
+happened in your program immediately segfaults, prints "Bus error", or seems to jump into
+the middle of nowhere after you pass the ret opcode).
 
 \subsubsection{RSP can be moved down further to create free real estate}
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Allocating extra space on the stack}, captionpos=b]
 some_function:
     pushq %rbp
     movq %rsp, %rbp
-    subq $108, %rsp /* now we've made 100 bytes of free real-estate (tm) to store stuff
-    like extra variables, arrays, and strings */
+    subq $108, %rsp /* now we've made 100 bytes of free real-estate (tm) to store
+                       stuff like extra variables, arrays, and strings */
     /* ... */
     /* don't forget to restore it at the end of your function!
     addq $108, %rsp
@@ -624,7 +678,7 @@ confusingly,
 will actually jump to \texttt{.someLabel} if $rbx < rax$. This idiosyncrasy exists because
 of the src to dest opcode argument order in AT\&T assembly.
 
-\subsection{Beware the width suffixes when moving values to/from memory references}
+\subsection{Beware the width suffixes when using memory references}
 
 Remember that all pointers on x86\_64 are 8-bytes. Thus any registers passed to the memory
 reference syntax \texttt{offset(base, index, multiple)} must be full-size registers, i.e.
@@ -646,7 +700,7 @@ the only instance where you can have registers of different widths in your assem
 opcodes, as the memory reference register must always be the full-size register.
 
 Likewise when loading memory references into a register for computation, always ensure that
-they are loaded into full 8-byte registers, and that all operations are done using 80byte
+they are loaded into full 8-byte registers, and that all operations are done using 8-byte
 instructions when manipulating the address.
 
 \subsubsection{Use the "width changing mov" to widen registers}
@@ -664,7 +718,7 @@ then copy the smaller value in, e.g.
     movb %cl, %al
 \end{lstlisting}
 
-or you can use the \texttt{movz[a][b]}, where [a] is a width suffix (one of \texttt{b},
+or you can use \texttt{movz[a][b]}, where [a] is a width suffix (one of \texttt{b},
 \texttt{w}, \texttt{l}, \texttt{q}, for 1,2,4,8 bytes respectively), and [b] is a wider
 width suffix. For example \texttt{movzbq} will copy an 1-byte register to a 8-byte
 register, e.g. \texttt{movzbq \%al, \%rcx}. The registers used must match in width to each
@@ -673,16 +727,18 @@ part.
 To copy with sign extension (e.g. widening a signed number), use \texttt{movs[a][b]}, with
 [1] and [b] being the same as above.
 
-Note that \texttt{movzlq}) do not exist). This is because \textbf{doing a \texttt{mov}
+Note that \texttt{movzlq} does not exist). This is because \textbf{doing a \texttt{mov}
 into a 4-byte register always clears the upper 4 bytes}. However, \texttt{movslq} exists
-to sign-extend from 4-bytes to 8-bytes.
+to sign-extend from 4-bytes to 8-bytes. Note that writes to any other subregister width
+(i.e. the 2-byte and 1-byte subregisters) \textbf{retains values in the unwritten part of
+the full register}.
 
-\subsection{Assembly code executes from top to bottom in the absence of control flow}
+\subsection{Assembly code executes linearly in the absence of control flow}
 
 Often, students assume that assembly works like C, and that local labels work like magical
 "teleportation" markers that change control flow by simply existing. This is not the case!
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Incorrect assembly control-flow assumptions}, captionpos=b]
 some_function:
     /* bunch of assembly code */
     /* now we try write an if else */
@@ -716,7 +772,7 @@ Answer:
 
 A naive rewrite to be functionally correct:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Correct control flow}, captionpos=b]
 some_function:
     /* bunch of assembly code */
     /* now we try write an if else */
@@ -735,7 +791,7 @@ some_function:
 
 However, if we analyze the structure of the code, further redundancies become apparent:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Optimized if-else equivalent}, captionpos=b]
 some_function:
     /* bunch of assembly code */
     /* now we try write an if else */
@@ -753,6 +809,11 @@ some_function:
 
 And that's probably the best this \texttt{if} construction will get.
 
+This also means that forgetting the \texttt{ret} instruction in any branch of a function
+will probably lead to very confusing behaviour, as the CPU will happily execute the next
+assembly instruction in the file, which is probably from a different branch, or even from
+a different function!
+
 \subsection{Write useful comments}
 
 Write semantic comments. Write comments as you write each line of assembly. Yes, we've all
@@ -763,7 +824,7 @@ the line. Trust us on this one.
 
 Here is an example of bad comments (syntactic comments):
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Bad: \emph{syntactic} comments}, captionpos=b]
 some_function:
     xorl %ecx, %ecx /* 0 rcx */
     xorl %edx, %edx /* 0 rdx */
@@ -786,7 +847,7 @@ source.
 
 Here is an example of assembly comments that are actually useful:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Good: \emph{semantic} comments}, captionpos=b]
 /*
  * function args:
  * - rdi -> iterations_to_sum
@@ -827,7 +888,7 @@ you can scroll it, and \texttt{refresh} to force all the windows to be redrawn i
 printout breaks in any ways. (\texttt{layout src} is the same, without the register view,
 and is quite nice for debugging normal C and C++ source).
 
-Secondly, here's a refresher of all the essential features of gdb you probably forgot:
+Secondly, here's a refresher of all the essential features of GDB you probably forgot:
 
 \begin{enumerate}
     \item \texttt{b [filename]:[linenum]} to set a breakpoint at the given line in the
@@ -850,7 +911,7 @@ Secondly, here's a refresher of all the essential features of gdb you probably f
         denotes a optional list of arguments normally passed to the program on the command
         line. If your program takes input from stdin you pipe in from a file, you can use
         the file redirection form \texttt{r [opt args] < file} to dump the file into
-        the program's \texttt{stdin}, without dump the input into gdb. Note that if you blow past
+        the program's \texttt{stdin}, without dump the input into GDB. Note that if you blow past
         the area of interest in GDB, just re-run your \texttt{r} command; it will restart
         the debug session with all your breakpoints intact. Don't exit GDB!
     \item \texttt{p [expression]}, prints the value of any C expression. Yes this can
@@ -881,7 +942,7 @@ Secondly, here's a refresher of all the essential features of gdb you probably f
 \end{enumerate}
 
 Note that GDB seems to have pretty good hot reload support. If you make changes to the
-source files, just run make in another terminal, and gdb should use the new executable
+source files, just run make in another terminal, and GDB should use the new executable
 when you use the \texttt{r} command again, allowing you to keep all of your current
 breakpoints.
 
@@ -890,15 +951,16 @@ To print register values, you must replace the \texttt{\%} prefix with \texttt{\
 
 The \texttt{@} operator may not always work correctly for printing arrays. If it is not
 behaving, try the \texttt{x} command, documented
-\href{https://visualgdb.com/gdbreference/commands/x}{here}.
+\href{https://visualGDB.com/gdbreference/commands/x}{here}.
 
-\subsection{Optional: Use ABI compliant stack frames for enhanced debugging}
+\subsection{Optional: Use ABI compliant stack frames for sensible backtraces}
 
 This is not a hard-recommendation, but it is recommended if you want to have sensible
 backtraces in GDB  and valgrind instead of a stack of question marks.
 
 A ABI compliant stack frame looks like the following:
 
+\begin{table}[h]
 \begin{tabular}{r | c | c}
     \multicolumn{1}{c}{Position} & \multicolumn{1}{c}{Contents} & \multicolumn{1}{c}{Frame}\\\hline
     \texttt{8n+16(\%rbp)} & 8-byte stack passed argument n  & \multirow{3}{*}{Previous} \\
@@ -912,13 +974,16 @@ A ABI compliant stack frame looks like the following:
      \texttt{-128(\%rsp)} & end of red zone (safe for vars) &
 
 \end{tabular}
+\caption{ABI-compliant stack frame organization}
+\label{table:abi_frame}
+\end{table}
 
 This allows GDB (and valgrind) to trace the backtrace by following rbp to to correct part
 of the stack, retrieving the return address, and using the known old rbp value to find the
 next stack frame recursively like a linked list. To build a compliant stack frame, use the
 following function prelude:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={ABI-compliant stack frame construction}, captionpos=b]
 some_function:
     /* call pushes the return address, so that takes care of the topmost
     element of the ABI stack frame */
@@ -943,7 +1008,7 @@ not the larger end. Reversing this will lead to some very mysterious bugs.
 The following technique for creating stack frames is not ABI compliant. It also works, but
 will lead to meaningless backtraces:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Non-compliant stack frame construction}, captionpos=b]
 some_function:
     /* call pushes the return address, so that takes care of the topmost
     element of the ABI stack frame */
@@ -975,7 +1040,7 @@ cute things like using the stack) $(1+2-3)*(4+5+7)$?
 
 Answer: 2. See below:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={An assembly implementation of $(1+2-3)*(4+5+7)$}, captionpos=b]
     movq $7, %rax
     addq $5, %rax
     addq $4, %rax
@@ -988,7 +1053,7 @@ Answer: 2. See below:
 likewise, registers should can be reused as soon as the value their modeling becomes dead
 (i.e. is not used anymore in a function). Considering the following chunk of C code:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={C example for register allocation}, captionpos=b]
 int summate(int *arr, size_t len) {
     long i = len ;
     long acc = 0;
@@ -1006,16 +1071,17 @@ int summate(int *arr, size_t len) {
 
 and a possible assembly implementation of the above:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Possible assembly implementation of the above example}, captionpos=b]
 /*
  * rdi - int* arr
  * rsi - size_t len
  */
 .globl summate
 summate:
-    pushq %rbx      /* save the accumulate before use (need to persist across call) */
+    pushq %rbx      /* save the accumulator before use into callee-saved register
+                       (need to persist across call) */
     movq %rsi, %rcx /* initialize loop counter */
-    xorl %ebx, %ebx   /* zero accumulator */
+    xorl %ebx, %ebx /* zero accumulator */
     jmp .LwhileCond
 .LwhileTop:
     addq (%rdi, %rcx, 4), %rbx /* acc += arr[i] */
@@ -1029,16 +1095,21 @@ summate:
     addq $3, %rcx
     imulq $2, %rcx
 
-    /* function args passign reg have not been overwritten, so arr->rdi, len->rsi, and we
-       put some_math->rcx by design and the initial push aligned the stack so we are now
-       ready to call the function */
+    /* function args passing reg have not been overwritten, so arr->rdi, len->rsi,
+       and we put some_math->rcx by design and the initial push aligned the stack
+       so we are now ready to call the function */
     callq do_some_other_stuff_with_arr
 
-    /* at this point, we must assume that ALL caller-saved registers are clobbered */
+    /* at this point, must assume that ALL caller-saved registers are clobbered */
     /* ...but rbx is callee saved, so we can assume it's still intact */
     movq %rbx, %rax /* return the accumulator */
     popq %rbx       /* restore callee saved register */
     ret
 \end{lstlisting}
+
+\newpage
+\section{Listing and table indexes}
+\lstlistoflistings
+\listoftables
 
 \end{document}
