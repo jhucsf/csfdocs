@@ -12,4 +12,4 @@ following Github repository: <https://github.com/jhucsf/csfdocs>.
 
 ## Published documents
 
-* [x86 64 Assembly Tips & Tricks, v0.1.0](assembly-tips-v0.1.0.pdf)
+* [x86 64 Assembly Tips & Tricks, v0.1.1](assembly-tips-v0.1.1.pdf)
