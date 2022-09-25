@@ -133,23 +133,27 @@ past:
         docs}. They are using AT\&T syntax, so the examples are completely compatible with
         the assembler we want you to use in this class.
     \item UVA's \href{https://www.cs.virginia.edu/~evans/cs216/guides/x86.html}{intro
-        guide}. (Beware the instruction argument order! This is Intel syntax which
+        guide}. (Beware the instruction operand order! This is Intel syntax which
         is the reverse of the AT\&T syntax used in this class.)
     \item Intel's own
         \href{https://www.intel.com/content/dam/develop/external/us/en/documents/introduction-to-x64-assembly-181178.pdf}{intro docs}
-        (Beware the instruction argument order! This is intel sytax, which is the reverse
+        (Beware the instruction operand order! This is intel sytax, which is the reverse
         of the AT\&T syntax used in this class.)
     \item A good reference for the register breakdown:
         \href{https://en.wikibooks.org/wiki/X86_Assembly/X86_Architecture}{wikibooks}.
     \item A comprehensive reference for
-        \href{https://www.felixcloutier.com/x86/}{x86 instructions}.
+        \href{https://www.felixcloutier.com/x86/}{x86 instructions}. Prefer this over the
+        BrownU doc if you need to know exactly which forms of an instruction are valid,
+        since BrownU's doc leaves out a few valid forms that make life better. This is
+        built from the Intel reference manuals, so it is always correct, but has the
+        reversed instruction operand order.
 \end{enumerate}
 
 \subsection{Memory references}
 
 Most x86 instructions can access at least one memory location (i.e. perform the equivalent
 of the C memory operation \texttt{*var}). This is done by replacing one of the normal
-instruction arguments with the memory reference syntax \texttt{offset(base\_address,
+instruction operands with the memory reference syntax \texttt{offset(base\_address,
 index, index\_size)}. \texttt{offset} is an integer literal, \texttt{base\_address} is a
 8-byte register, \texttt{index} is an 8-byte register, and \texttt{offset\_size} is one of
 1, 2, 4, or 8. This will compute $offset + base\_address + index * index\_size$, and
@@ -170,7 +174,14 @@ Here are some example of this syntax, used with the \texttt{mov} instruction:
     movb (%rax, %rcx, 4), %dil /* C equivalent: uint8_t rdx = rax[rcx] */
     movl (%rax, %rcx, 4), %edx /* C equivalent: uint32_t rdx = rax[rcx] */
     movq (%rax, %rcx, 8), %rdx /* C equivalent: uint64_t rdx = rax[rcx] */
-    /* note that register, memory ordering also works */
+    /* you can drop the item size component if each item in the index data is 1-byte... */
+    movb (%rax, %rcx), %dil /* C equivalent: uint8_t dil = rax[rcx] */
+    /* ...or you can also apply an offset */
+    movq -256(%rax, %rcx, 8), %rdx /* C equivalent: too hard to write :) */
+    /* note that register, memory ordering also works for most instructions...*/
+    movq %rdx, (%rax, %rcx, 8) /* C equivalent: uint64_t rdx = rax[rcx] */
+    /* ...and that most instructions can take one */
+    incq (%rax) /* (uint64_t) rax += 1 */
 \end{lstlisting}
 
 Notice that the size of the items in the array must be consider when computing offsets
@@ -179,7 +190,7 @@ in pointer arithmetic or array indexing.
 
 Generally speaking, most assembly instructions will only take one memory reference:
 
-\begin{lstlisting}
+\begin{lstlisting}[caption={Using multiple memory references correctly}]
     /* incorrect, will not assemble */
     movq (%rax), (%rcx)
     /* correct, must use intermediate register */
@@ -653,19 +664,19 @@ some_function:
 You do have to keep track of how you split up this space though; we recommend leaving a
 comment with the offset to each logical division of this space.
 
-\subsection{The arguments for AT\&T syntax are reversed}
+\subsection{The operandss for AT\&T syntax are reversed}
 
 Most assembly resources found for x86\_64 asm will give you intel syntax, which does not
-have the AT\&T opcode argument annotations (the \texttt{\$}, \texttt{\%} prefixes before the
+have the AT\&T opcode operand annotations (the \texttt{\$}, \texttt{\%} prefixes before the
 opcode args), does not use with suffixes on the opcode (e.g. the l in "subl),
 and which puts the destination before the source e.g. $opcode [dest], [src]$.
 
 However, in this class, we use AT\&T syntax which places the destination after the source
 (e.g. \texttt{opcode [src], [dest]}), which does use width opcode suffixes, and does use opcode
-argument annotation. Thus if you consult a standard x86\_64 asm reference, remember to
-reverse the argument order before using the instruction in your code!
+operand annotation. Thus if you consult a standard x86\_64 asm reference, remember to
+reverse the operand order before using the instruction in your code!
 
-\subsubsection{Subtraction and compare have reversed arguments}
+\subsubsection{Subtraction and compare have reversed operandss}
 
 When you write \texttt{subq \%rax, \%rbx}, this actually does $rbx \leftarrow rbx - rax$. More
 confusingly,
@@ -676,7 +687,7 @@ confusingly,
 \end{lstlisting}
 
 will actually jump to \texttt{.someLabel} if $rbx < rax$. This idiosyncrasy exists because
-of the src to dest opcode argument order in AT\&T assembly.
+of the src to dest opcode operand order in AT\&T assembly.
 
 \subsection{Beware the width suffixes when using memory references}
 
@@ -907,7 +918,7 @@ Secondly, here's a refresher of all the essential features of GDB you probably f
     \item \texttt{n} steps \emph{over} a line, does not enter function calls, \texttt{s}
         steps \emph{into} a line, does enter function calls, \texttt{fin} runs until the
         end of the function, useful if you want to get out of a function immediately.
-    \item \texttt{r [opt args]} starts the program being debugged, \texttt{[optargs]}
+    \item \texttt{r [optargs]} starts the program being debugged, \texttt{[optargs]}
         denotes a optional list of arguments normally passed to the program on the command
         line. If your program takes input from stdin you pipe in from a file, you can use
         the file redirection form \texttt{r [opt args] < file} to dump the file into
