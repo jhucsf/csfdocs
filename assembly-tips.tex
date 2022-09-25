@@ -190,7 +190,7 @@ in pointer arithmetic or array indexing.
 
 Generally speaking, most assembly instructions will only take one memory reference:
 
-\begin{lstlisting}[caption={Using multiple memory references correctly}]
+\begin{lstlisting}[caption={Using multiple memory references correctly}, captionpos=b]
     /* incorrect, will not assemble */
     movq (%rax), (%rcx)
     /* correct, must use intermediate register */
@@ -202,7 +202,7 @@ Sometimes the address of a memory reference is desired instead of a dereference 
 a pointer (i.e. the equivalent of the \texttt{\&} operator in C). To do this, you can use
 \texttt{leaq [memory reference expression], [dest register]}:
 
-\begin{lstlisting}[caption={\texttt{leaq} instruction example}]
+\begin{lstlisting}[caption={\texttt{leaq} instruction example}, captionpos=b]
     /* roughly equivalent to uint64_t* rdx = &rax[rcx] */
     leaq (%rax, %rcx, 8), %rdx
     /* Can also use with an offset, for things like stack frame locations */
@@ -664,7 +664,7 @@ some_function:
 You do have to keep track of how you split up this space though; we recommend leaving a
 comment with the offset to each logical division of this space.
 
-\subsection{The operandss for AT\&T syntax are reversed}
+\subsection{The operands for AT\&T syntax are reversed}
 
 Most assembly resources found for x86\_64 asm will give you intel syntax, which does not
 have the AT\&T opcode operand annotations (the \texttt{\$}, \texttt{\%} prefixes before the
@@ -676,7 +676,7 @@ However, in this class, we use AT\&T syntax which places the destination after t
 operand annotation. Thus if you consult a standard x86\_64 asm reference, remember to
 reverse the operand order before using the instruction in your code!
 
-\subsubsection{Subtraction and compare have reversed operandss}
+\subsubsection{Subtraction and compare have reversed operands}
 
 When you write \texttt{subq \%rax, \%rbx}, this actually does $rbx \leftarrow rbx - rax$. More
 confusingly,
