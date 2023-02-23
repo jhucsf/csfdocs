@@ -171,7 +171,7 @@ Here are some example of this syntax, used with the \texttt{mov} instruction:
     movq $(%rax), %rcx /* C equivalent: uint64_t rcx = *rax */
     movb $(%rax), %cl /* C equivalent: uint8_t cl = *rax */
     movq -128(%rax), %rcx /* C equivalent: uint64_t rcx = *((uint64_t*)(((uint8_t*)rax) - 128)) */
-    movb (%rax, %rcx, 4), %dil /* C equivalent: uint8_t rdx = rax[rcx] */
+    movb (%rax, %rcx, 1), %dil /* C equivalent: uint8_t rdx = rax[rcx] */
     movl (%rax, %rcx, 4), %edx /* C equivalent: uint32_t rdx = rax[rcx] */
     movq (%rax, %rcx, 8), %rdx /* C equivalent: uint64_t rdx = rax[rcx] */
     /* you can drop the item size component if each item in the index data is 1-byte... */
