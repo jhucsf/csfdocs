@@ -42,7 +42,7 @@
 \begin{document}
 \title{x86\_64 Assembly Tips \& Tricks \\
 \large EN 601.229: CSF @ JHU\\
-Version 0.1.1}
+Version 0.1.2}
 \author{The CSF Course Staff (Max Hahn)}
 \maketitle
 
@@ -171,9 +171,15 @@ Here are some example of this syntax, used with the \texttt{mov} instruction:
     movq $(%rax), %rcx /* C equivalent: uint64_t rcx = *rax */
     movb $(%rax), %cl /* C equivalent: uint8_t cl = *rax */
     movq -128(%rax), %rcx /* C equivalent: uint64_t rcx = *((uint64_t*)(((uint8_t*)rax) - 128)) */
-    movb (%rax, %rcx, 4), %dil /* C equivalent: uint8_t rdx = rax[rcx] */
-    movl (%rax, %rcx, 4), %edx /* C equivalent: uint32_t rdx = rax[rcx] */
-    movq (%rax, %rcx, 8), %rdx /* C equivalent: uint64_t rdx = rax[rcx] */
+    movb (%rax, %rcx, 1), %dl  /* C equivalent: uint8_t rdx = rax[rcx]
+                                  (assuming %rax points to array of
+                                  uint8_t eleemnts */
+    movl (%rax, %rcx, 4), %edx /* C equivalent: uint32_t rdx = rax[rcx]
+                                  assuming %rax points to array of
+                                  uint32_t elements  */
+    movq (%rax, %rcx, 8), %rdx /* C equivalent: uint64_t rdx = rax[rcx]
+                                  assuming %rax points to array of
+                                  uint64_t elements */
     /* you can drop the item size component if each item in the index data is 1-byte... */
     movb (%rax, %rcx), %dil /* C equivalent: uint8_t dil = rax[rcx] */
     /* ...or you can also apply an offset */
@@ -181,7 +187,7 @@ Here are some example of this syntax, used with the \texttt{mov} instruction:
     /* note that register, memory ordering also works for most instructions...*/
     movq %rdx, (%rax, %rcx, 8) /* C equivalent: uint64_t rdx = rax[rcx] */
     /* ...and that most instructions can take one */
-    incq (%rax) /* (uint64_t) rax += 1 */
+    incq (%rax) /* *((uint64_t *) rax) += 1 */
 \end{lstlisting}
 
 Notice that the size of the items in the array must be consider when computing offsets
@@ -201,6 +207,9 @@ Generally speaking, most assembly instructions will only take one memory referen
 Sometimes the address of a memory reference is desired instead of a dereference value from
 a pointer (i.e. the equivalent of the \texttt{\&} operator in C). To do this, you can use
 \texttt{leaq [memory reference expression], [dest register]}:
+
+% avoid an awkward page break
+\newpage
 
 \begin{lstlisting}[caption={\texttt{leaq} instruction example}, captionpos=b]
     /* roughly equivalent to uint64_t* rdx = &rax[rcx] */
